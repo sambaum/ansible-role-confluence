@@ -73,6 +73,17 @@
     creates: "/opt/atlassian/confluence/bin/start-confluence.sh"
   tags: confluence
 
+- name: unarchive package jdbc
+  shell: |
+    cd {{ confluence_mysql_jar_dest }}
+    rm -rf *mysql*.jar
+    curl -skL {{ mysql_jdbc_download_url }} | tar zxf - --strip-components 1 --wildcards "mysql*/*mysql*.jar"
+    chown -Rf daemon:daemon /opt/atlassian/confluence
+  args:
+    creates: "{{ confluence_mysql_jar_dest }}/*mysql*.jar"
+  tags: confluence
+  notify: restart confluence
+
 - name: copy templates
   template:
     src: "./templates{{ item.dest }}.j2"
@@ -103,6 +114,21 @@
   service:
     name: confluence
     enabled: yes
-  changed_when: false
-  ignore_errors: yes
+#  changed_when: false
+#  ignore_errors: yes
   tags: confluence
+
+- name: start confluence
+  service:
+    name: confluence
+    state: started
+
+- name: set transaction-isolation=READ-COMMITTED
+  lineinfile:
+    path: "{{ confluence_use_mysql_config_file }}"
+    regexp: '^transaction-isolation='
+    insertafter: '^\[mysqld\]'
+    line: 'transaction-isolation=READ-COMMITTED'
+  notify: restart mysql
+  when: confluence_use_mysql
+

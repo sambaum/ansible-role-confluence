@@ -13,3 +13,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+- name: restart mysql
+  service:
+    name: mysql
+    state: restarted 
+    sleep: 5
+
+- name: restart confluence
+  service:
+    name: confluence
+    state: restarted
