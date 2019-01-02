@@ -44,16 +44,19 @@
          For more info see https://confluence.atlassian.com/x/s3UC
          ==============================================================================================================
         -->
-
+{% if confluence_enable_https == false %}
         <!--
+{% endif %}
         <Connector port="8443" maxHttpHeaderSize="8192"
                    maxThreads="150" minSpareThreads="25"
                    protocol="org.apache.coyote.http11.Http11Nio2Protocol"
                    enableLookups="false" disableUploadTimeout="true"
                    acceptCount="100" scheme="https" secure="true"
                    clientAuth="false" sslProtocol="TLSv1.2" sslEnabledProtocols="TLSv1.2" SSLEnabled="true"
-                   URIEncoding="UTF-8" keystorePass="<MY_CERTIFICATE_PASSWORD>"/>
+                   URIEncoding="UTF-8" keystorePass="{{ confluence_letsencrypt_jks_pass }}" keystoreFile="{{confluence_letsencrypt_jks_destination}}/{{confluence_letsencrypt_jks_keystore_name}}"/>
+{% if confluence_enable_https == false %}
         -->
+{% endif %}
 
         <!--
          ==============================================================================================================

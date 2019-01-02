@@ -98,6 +98,7 @@
     - { dest: "/opt/atlassian/confluence/conf/server.xml", owner: "daemon", group: "daemon" }
   register: template_result
   tags: confluence
+  notify: restart confluence
 
 - name: systemctl daemon-reload
   systemd:
@@ -132,3 +133,41 @@
   notify: restart mysql
   when: confluence_use_mysql
 
+- name: deploy letsencrypt helper script
+  template:
+    src: letsencrypt_keystore_helper.sh.j2
+    dest: "{{ confluence_letsencrypt_jks_destination }}/letsencrypt_keystore_helper.sh"
+    owner: daemon
+    group: daemon
+    mode: 0744
+  when: confluence_letsencrypt_jks_helper_script
+
+- name: deploy letsencrypt helper script cron job
+  cron:
+    name: letsencrypt helper script
+    minute: 0
+    hour: 4
+    user: root
+    job: "{{ confluence_letsencrypt_jks_destination }}/letsencrypt_keystore_helper.sh"
+    cron_file: confluence_letsencrypt
+
+- name: run letsencrypt helper script
+  command: "{{ confluence_letsencrypt_jks_destination }}/letsencrypt_keystore_helper.sh"
+
+- name: Redirect http to https
+  blockinfile:
+    path: /opt/atlassian/confluence/confluence/WEB-INF/web.xml
+    insertbefore: '^</web-app>'
+    marker: "<!-- {mark} ANSIBLE MANAGED BLOCK -->"
+    content: |
+      <security-constraint>
+        <web-resource-collection>
+          <web-resource-name>Restricted URLs</web-resource-name>
+          <url-pattern>/</url-pattern>
+        </web-resource-collection>
+        <user-data-constraint>
+          <transport-guarantee>CONFIDENTIAL</transport-guarantee>
+        </user-data-constraint>
+      </security-constraint>
+  when: confluence_redirect_http_to_https
+  notify: restart confluence
