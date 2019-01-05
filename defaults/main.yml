@@ -43,7 +43,7 @@ confluence_mysql_jar_dest: /opt/atlassian/confluence/confluence/WEB-INF/lib
 confluence_enable_https: true
 confluence_letsencrypt_jks_helper_script: false
 confluence_letsencrypt_jks_destination: /var/atlassian/application-data/confluence
-confluence_letsencrypt_jks_keystore_name: confluence.jks
+confluence_letsencrypt_jks_keystore_name: confluence.p12
 confluence_letsencrypt_cert_path: /etc/letsencrypt/live/example.com
 confluence_letsencrypt_jks_pass: 123456
 confluence_letsencrypt_restart_command: systemctl restart confluence.service
