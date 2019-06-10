@@ -20,11 +20,6 @@
     state: restarted 
     sleep: 5
 
-- name: restart confluence
-  service:
-    name: confluence
-    state: restarted
-
 - name: confluence | systemctl daemon-reload
   systemd:
     daemon_reload: true

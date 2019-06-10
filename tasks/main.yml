@@ -120,11 +120,12 @@
     cd {{ confluence_mysql_jar_dest }}
     rm -rf *mysql*.jar
     curl -skL {{ mysql_jdbc_download_url }} | tar zxf - --strip-components 1 --wildcards "mysql*/*mysql*.jar"
-    chown -Rf daemon:daemon /opt/atlassian/confluence
+    chown -Rf confluence:confluence /opt/atlassian/confluence
   args:
     creates: "{{ confluence_mysql_jar_dest }}/*mysql*.jar"
   tags: confluence
-  notify: restart confluence
+  notify:
+    - confluence | systemctl restart
 
 - name: copy templates
   template:
@@ -142,7 +143,6 @@
     - confluence | systemctl daemon-reload
     - confluence | systemctl restart
   tags: confluence
-  notify: restart confluence
 
 - name: prepare files
   file:
@@ -156,6 +156,9 @@
     - { dest: "/lib/systemd/system/confluence.service" }
     - { dest: "/opt/atlassian/confluence/bin/setenv.sh", owner: "confluence", group: "confluence", mode: "0755" }
     - { dest: "/opt/atlassian/confluence/conf/server.xml", owner: "confluence", group: "confluence" }
+  notify:
+    - confluence | systemctl daemon-reload
+    - confluence | systemctl restart
   tags: confluence
 
 - name: flush handlers
@@ -168,14 +171,9 @@
     enabled: true
   with_items:
     - { name: "confluence" }
-  changed_when: false #
-  ignore_errors: true #
+#  changed_when: false
+#  ignore_errors: true
   tags: confluence
-
-- name: start confluence
-  service:
-    name: confluence
-    state: started
 
 - name: set transaction-isolation=READ-COMMITTED
   lineinfile:
@@ -190,8 +188,8 @@
   template:
     src: letsencrypt_keystore_helper.sh.j2
     dest: "{{ confluence_letsencrypt_jks_destination }}/letsencrypt_keystore_helper.sh"
-    owner: daemon
-    group: daemon
+    owner: confluence
+    group: confluence
     mode: 0744
   when: confluence_letsencrypt_jks_helper_script
 
@@ -206,6 +204,8 @@
 
 - name: run letsencrypt helper script
   command: "{{ confluence_letsencrypt_jks_destination }}/letsencrypt_keystore_helper.sh"
+  notify:
+    - confluence | systemctl restart
 
 - name: Redirect http to https
   blockinfile:
@@ -223,4 +223,5 @@
         </user-data-constraint>
       </security-constraint>
   when: confluence_redirect_http_to_https
-  notify: restart confluence
+  notify: 
+    - confluence | systemctl restart
