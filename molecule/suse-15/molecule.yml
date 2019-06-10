@@ -14,30 +14,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-- name: restart mysql
-  service:
-    name: mysql
-    state: restarted 
-    sleep: 5
-
-- name: restart confluence
-  service:
-    name: confluence
-    state: restarted
-
-- name: confluence | systemctl daemon-reload
-  systemd:
-    daemon_reload: true
-  when:
-    - ansible_service_mgr == 'systemd'
-  changed_when: false
-  ignore_errors: true
-
-- name: confluence | systemctl restart
-  service:
-    name: "{{ item.name }}"
-    state: restarted
-  with_items:
-    - { name: "confluence" }
-  changed_when: false
-  ignore_errors: true
+scenario:
+  name: suse-15
+driver:
+  name: lxd
+platforms:
+  - name: ${MOLECULE_INSTANCE_NAME}-1
+    url: unix:/var/snap/lxd/common/lxd/unix.socket
+    source:
+      server: https://images.linuxcontainers.org
+      protocol: simplestreams
+      alias: opensuse/15.0/amd64
+lint:
+  name: yamllint
+dependency:
+  name: galaxy
+  options:
+    role-file: ansible-role-requirements.yml
+    roles-path: ${ANSIBLE_ROLES_PATH}
+    ignore-errors: true
+provisioner:
+  name: ansible
+  env:
+    ANSIBLE_ROLES_PATH: ${ANSIBLE_ROLES_PATH}
+  lint:
+    name: ansible-lint
+verifier:
+  name: testinfra
+  lint:
+    name: flake8

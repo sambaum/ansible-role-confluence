@@ -14,6 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+- name: include default variables
+  include_vars: "../vars/main.yml"
+  tags: confluence
+
 - name: include release specific variables
   include_vars: "{{ loop_var }}"
   with_first_found:
@@ -24,9 +28,9 @@
         - "{{ ansible_distribution | lower }}.yml"
         - "{{ ansible_os_family | lower }}.yml"
       paths: "../vars"
-      skip: "yes"
   loop_control:
     loop_var: "loop_var"
+  ignore_errors: true
   tags: confluence
 
 - name: include release specific tasks
@@ -39,9 +43,27 @@
         - "{{ ansible_distribution | lower }}.yml"
         - "{{ ansible_os_family | lower }}.yml"
       paths: "."
-      skip: "yes"
   loop_control:
     loop_var: "loop_var"
+  ignore_errors: true
+  tags: confluence
+
+- name: groupadd
+  group:
+    name: "confluence"
+    system: true
+    state: "present"
+  tags: confluence
+
+- name: useradd
+  user:
+    name: "confluence"
+    group: "confluence"
+    home: "/var/atlassian/application-data/confluence"
+    shell: "/usr/sbin/nologin"
+    system: true
+    create_home: false
+    state: "present"
   tags: confluence
 
 - name: prepare directories
@@ -53,24 +75,44 @@
     state: "{{ item.state | default('directory') }}"
   with_items:
     - { dest: "/etc/init.d" }
-    - { dest: "/etc/systemd/system" }
-    - { dest: "/opt/atlassian/confluence", owner: "daemon", group: "daemon" }
-    - { dest: "/var/atlassian/application-data/confluence", owner: "daemon", group: "daemon" }
+    - { dest: "/lib/systemd/system" }
+    - { dest: "/opt/atlassian/confluence", owner: "confluence", group: "confluence" }
+    - { dest: "/opt/atlassian/confluence/bin", owner: "confluence", group: "confluence" }
+    - { dest: "/opt/atlassian/confluence/conf", owner: "confluence", group: "confluence" }
+    - { dest: "/var/atlassian/application-data/confluence", owner: "confluence", group: "confluence" }
+  tags: confluence
+
+- name: download archive
+  get_url:
+    url: "{{ item.url }}"
+    dest: "{{ item.dest }}"
+    checksum: "{{ item.checksum }}"
+  with_items:
+    - "{{ confluence_download }}"
+    - "{{ mysql_jdbc_download }}"
+    - "{{ postgresql_jdbc_download }}"
+  register: result
+  until: result is succeeded
   tags: confluence
 
 - name: unarchive package
   shell: |
+    set -o pipefail
     cd /opt/atlassian/confluence
-    curl -skL {{ confluence_download_url }} | tar zxf - --strip-components 1
-    cd /opt/atlassian/confluence/WEB-INF/lib
+    tar zxf {{ confluence_download.dest }} --strip-components=1
+    cd /opt/atlassian/confluence/confluence/WEB-INF/lib
     rm -rf *mysql*.jar
-    curl -skL {{ mysql_jdbc_download_url }} | tar zxf - --strip-components 1 --wildcards "mysql*/*mysql*.jar"
-    cd /opt/atlassian/confluence/WEB-INF/lib
+    tar zxf {{ mysql_jdbc_download.dest }} --strip-components=1 --wildcards "mysql*/*mysql*.jar"
+    cd /opt/atlassian/confluence/confluence/WEB-INF/lib
     rm -rf *postgresql*.jar
-    curl -skL {{ postgresql_jdbc_download_url }} -O
-    chown -Rf daemon:daemon /opt/atlassian/confluence
+    cp {{ postgresql_jdbc_download.dest }} .
+    chown -Rf confluence:confluence /opt/atlassian/confluence
   args:
+    executable: "/bin/bash"
     creates: "/opt/atlassian/confluence/bin/start-confluence.sh"
+  notify:
+    - confluence | systemctl daemon-reload
+    - confluence | systemctl restart
   tags: confluence
 
 - name: unarchive package jdbc
@@ -93,30 +135,41 @@
     mode: "{{ item.mode | default('0644') }}"
   with_items:
     - { dest: "/etc/init.d/confluence", mode: "0755" }
-    - { dest: "/etc/systemd/system/confluence.service" }
-    - { dest: "/opt/atlassian/confluence/bin/setenv.sh", owner: "daemon", group: "daemon", mode: "0755" }
-    - { dest: "/opt/atlassian/confluence/conf/server.xml", owner: "daemon", group: "daemon" }
-  register: template_result
+    - { dest: "/lib/systemd/system/confluence.service" }
+    - { dest: "/opt/atlassian/confluence/bin/setenv.sh", owner: "confluence", group: "confluence", mode: "0755" }
+    - { dest: "/opt/atlassian/confluence/conf/server.xml", owner: "confluence", group: "confluence" }
+  notify:
+    - confluence | systemctl daemon-reload
+    - confluence | systemctl restart
   tags: confluence
   notify: restart confluence
 
-- name: systemctl daemon-reload
-  systemd:
-    name: confluence
-    daemon_reload: yes
-  when:
-    - ansible_service_mgr == 'systemd'
-    - template_result is changed
-  changed_when: false
-  ignore_errors: yes
+- name: prepare files
+  file:
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner | default('root') }}"
+    group: "{{ item.group | default('root') }}"
+    mode: "{{ item.mode | default('0644') }}"
+    state: "{{ item.state | default('file') }}"
+  with_items:
+    - { dest: "/etc/init.d/confluence", mode: "0755" }
+    - { dest: "/lib/systemd/system/confluence.service" }
+    - { dest: "/opt/atlassian/confluence/bin/setenv.sh", owner: "confluence", group: "confluence", mode: "0755" }
+    - { dest: "/opt/atlassian/confluence/conf/server.xml", owner: "confluence", group: "confluence" }
+  tags: confluence
+
+- name: flush handlers
+  meta: flush_handlers
   tags: confluence
 
 - name: enable service
   service:
-    name: confluence
-    enabled: yes
-#  changed_when: false
-#  ignore_errors: yes
+    name: "{{ item.name }}"
+    enabled: true
+  with_items:
+    - { name: "confluence" }
+  changed_when: false #
+  ignore_errors: true #
   tags: confluence
 
 - name: start confluence
